@@ -1,0 +1,95 @@
+name: Publish to PyPI
+
+# Runs on any tag matching v*. The pipeline is gated:
+# test must pass before build runs; build must succeed before publish runs.
+# Trusted publishing means there are no PyPI tokens stored in GitHub —
+# auth is OIDC, brokered by the `pypi` environment.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Run tests
+        run: uv run pytest
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      # The git tag and pyproject.toml version must agree, otherwise
+      # we'd publish a wheel whose filename doesn't match the release.
+      # This catches the easy mistake of tagging without bumping.
+      # github.ref is bound via env: rather than templated into run:
+      # so the value enters the shell as a normal env var, not as
+      # interpolated YAML.
+      - name: Verify tag matches package version
+        env:
+          TAG_REF: ${{ github.ref }}
+        run: |
+          TAG_VERSION="${TAG_REF#refs/tags/v}"
+          PKG_VERSION=$(grep -E '^version *=' pyproject.toml | head -1 | sed -E 's/version *= *"([^"]+)"/\1/')
+          echo "Tag version:     $TAG_VERSION"
+          echo "Package version: $PKG_VERSION"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag v$TAG_VERSION does not match pyproject.toml version $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Validate distribution metadata
+        run: uvx twine check dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # Environment gating gives you optional manual approval per release
+    # and ties the OIDC token to a specific PyPI trusted-publisher config.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/p6flow
+    permissions:
+      # Required for PyPI trusted publishing via OIDC. No secrets stored.
+      id-token: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

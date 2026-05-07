@@ -25,3 +25,7 @@ fixtures/private/
 
 # OS
 .DS_Store
+
+# Editor
+.vscode/
+.idea/
