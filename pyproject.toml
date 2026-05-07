@@ -1,6 +1,6 @@
 [project]
 name = "p6flow"
-version = "0.1.0"
+version = "0.1.1"
 description = "Parse Primavera P6 XER files into typed Snowflake-loadable Parquet."
 readme = "README.md"
 requires-python = ">=3.12"

@@ -109,8 +109,19 @@ def _parse_attrs(body: str) -> dict[str, str]:
     return dict(zip(parts[0::2], parts[1::2], strict=True))
 
 
-def _parse_node(s: str, i: int) -> tuple[_Node, int]:
+# Real P6 clndr_data nests at most ~5 levels (week / day / exception).
+# A hard cap defangs maliciously deep blobs that would otherwise blow
+# Python's default recursion limit (~1000) and could segfault on builds
+# with smaller stacks.
+_MAX_NESTING_DEPTH = 64
+
+
+def _parse_node(s: str, i: int, depth: int = 0) -> tuple[_Node, int]:
     """Parse one node starting at s[i]=='('."""
+    if depth > _MAX_NESTING_DEPTH:
+        raise ValueError(
+            f"clndr_data nesting exceeds depth limit ({_MAX_NESTING_DEPTH})"
+        )
     if s[i] != "(":
         raise ValueError(f"expected '(' at {i}")
     i += 1
@@ -130,7 +141,7 @@ def _parse_node(s: str, i: int) -> tuple[_Node, int]:
     k = 0
     while k < len(children_body):
         if children_body[k] == "(":
-            child, k = _parse_node(children_body, k)
+            child, k = _parse_node(children_body, k, depth + 1)
             children.append(child)
         else:
             raise ValueError(

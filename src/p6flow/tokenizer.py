@@ -23,11 +23,19 @@ on a file we can't classify.
 from __future__ import annotations
 
 import io
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
 ENCODINGS = ("utf-8-sig", "cp1252", "latin-1")
+
+# %T table names flow unsanitized into SQL identifiers and Parquet output
+# paths; a strict whitelist is the simplest defense against injection and
+# path traversal. Real P6 tables (per Oracle's pmSchema.xml, 347 of them)
+# are all uppercase identifiers, so this admits every legitimate name and
+# rejects anything weaponizable.
+_TABLE_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,62}$")
 
 
 @dataclass
@@ -174,6 +182,11 @@ def _parse_tables(opener: str, stream: Iterator[str]) -> Iterator[Table]:
     while line and not line.startswith("%E"):
         # 1. Grab table name from %T
         name = _split_tab(line)[1].strip()
+        if not _TABLE_NAME_RE.match(name):
+            raise ValueError(
+                f"invalid %T table name {name!r}: must match "
+                f"{_TABLE_NAME_RE.pattern}"
+            )
 
         # 2. Read %F line and parse column list. Real XERs sometimes
         #    emit %T immediately followed by another %T (or %E) when

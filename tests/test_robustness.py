@@ -411,3 +411,95 @@ def test_dw_raw_column_null_for_derived_tables(tmp_path):
         f"SELECT _raw FROM read_parquet('{out / 'CALENDAR.parquet'}') LIMIT 1"
     ).fetchone()[0]
     assert src_raws is not None and src_raws.startswith("%R\t")
+
+
+# ---- Security: hostile %T table name ------------------------------
+#
+# The %T directive flows unsanitized into SQL identifiers and Parquet
+# output paths. A whitelist regex in the tokenizer is the single fix
+# that defangs both SQL injection and path-traversal-via-COPY.
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "../../etc/passwd",            # path traversal
+        "evil') TO '/tmp/owned' --",   # SQL string-literal escape
+        "DROP_TABLE; --",              # statement injection attempt
+        "lower_case_name",             # not a real P6 table name shape
+        "WITH SPACE",                  # whitespace in identifier
+        "",                            # empty after strip
+    ],
+)
+def test_hostile_table_name_rejected(tmp_path, name):
+    body = (
+        b"ERMHDR\t22.12\t2026-05-04\tProject\n"
+        + f"%T\t{name}\n%F\tx\n%R\t1\n%E\n".encode()
+    )
+    xer = _write_xer(tmp_path / "f.xer", body)
+    with pytest.raises(ValueError, match="invalid %T table name"):
+        list(parse_tables(xer))
+
+
+def test_legitimate_table_names_accepted(tmp_path):
+    """Sanity check: every uppercase identifier shape used by real P6
+    schemas survives the new whitelist."""
+    for name in ("ACCOUNT", "AC_PROJRSRCROLELIST", "TASK", "PROJWBS_X"):
+        xer = _write_xer(
+            tmp_path / f"{name}.xer",
+            f"ERMHDR\t22.12\t2026-05-04\tProj\n%T\t{name}\n%F\tid\n%R\t1\n%E\n",
+        )
+        tables = list(parse_tables(xer))
+        assert len(tables) == 1 and tables[0].name == name
+
+
+# ---- Security: deeply nested clndr_data ------------------------------
+
+
+def _make_nested_blob(depth: int) -> str:
+    """Build a clndr_data blob nested `depth` levels deep. Node grammar
+    is `(<flags>||<name>(<attrs>)(<children>))`; built iteratively so
+    construction itself doesn't hit Python's recursion limit."""
+    blob = "(||leaf()())"
+    for _ in range(depth):
+        blob = f"(||x()({blob}))"
+    return blob
+
+
+def test_calendar_nesting_depth_limit():
+    """clndr_data parser must reject pathologically deep nesting at the
+    parse layer before blowing Python's recursion limit."""
+    from p6flow.calendar import _MAX_NESTING_DEPTH, _parse_root
+
+    blob = _make_nested_blob(_MAX_NESTING_DEPTH + 5)
+    with pytest.raises(ValueError, match="nesting exceeds depth limit"):
+        _parse_root(blob)
+
+
+def test_calendar_legitimate_nesting_accepted():
+    """Real P6 calendars nest only a few levels deep — make sure normal
+    blobs still parse."""
+    from p6flow.calendar import _parse_root
+
+    node = _parse_root(_make_nested_blob(5))
+    assert node.name == "x"
+
+
+def test_calendar_depth_limit_propagates_through_materialize(tmp_path):
+    """Regression guard against accidentally wrapping the parse path in
+    a try/except that swallows the ValueError. The depth-limit check is
+    only a meaningful DoS defense if it aborts the whole load — silently
+    skipping a hostile row would leave the rest of the pipeline running
+    on attacker-controlled timing."""
+    from p6flow.calendar import _MAX_NESTING_DEPTH, materialize_calendar_derived
+
+    con = duckdb.connect(":memory:")
+    con.execute(
+        "CREATE TABLE CALENDAR (clndr_id BIGINT, clndr_data VARCHAR)"
+    )
+    con.execute(
+        "INSERT INTO CALENDAR VALUES (1, ?)",
+        [_make_nested_blob(_MAX_NESTING_DEPTH + 5)],
+    )
+    with pytest.raises(ValueError, match="nesting exceeds depth limit"):
+        materialize_calendar_derived(con)
