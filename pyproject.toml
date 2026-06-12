@@ -1,9 +1,9 @@
 [project]
 name = "p6flow"
-version = "0.1.1"
+version = "0.1.2"
 description = "Parse Primavera P6 XER files into typed Snowflake-loadable Parquet."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 license = "LGPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSE-GPL"]
 authors = [{ name = "Will Truong" }]
@@ -24,6 +24,7 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Database",
@@ -76,7 +77,7 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py311"
 extend-exclude = ["src/p6flow/schema.py", "scripts/cache"]
 
 [tool.ruff.lint]
