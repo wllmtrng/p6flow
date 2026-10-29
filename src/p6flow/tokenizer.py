@@ -98,6 +98,45 @@ def _split_tab(line: str) -> list[str]:
     return line.rstrip("\r\n").split("\t")
 
 
+def _data_width(cells: list[str]) -> int:
+    """Cell count without trailing empties, which _normalize_rows drops."""
+    n = len(cells)
+    while n and cells[n - 1] == "":
+        n -= 1
+    return n
+
+
+def _split_tab_quoted(line: str) -> list[str]:
+    """Split on tabs, except tabs inside a double-quoted field.
+
+    P6 quotes a text value that holds a tab and doubles any quote inside
+    it (`"18"" tray<TAB>Y"`). Cells come back byte-for-byte as in the
+    file, quotes included, so they match what `_split_tab` yields for
+    every other row. A quote that does not open a field (`6" pipe`) is
+    plain text.
+    """
+    text = line.rstrip("\r\n")
+    cells: list[str] = []
+    start = i = 0
+    in_quotes = False
+    while i < len(text):
+        c = text[i]
+        if in_quotes:
+            if c == '"':
+                if text[i + 1 : i + 2] == '"':
+                    i += 1  # doubled quote inside the field
+                else:
+                    in_quotes = False
+        elif c == '"' and i == start:
+            in_quotes = True
+        elif c == "\t":
+            cells.append(text[start:i])
+            start = i + 1
+        i += 1
+    cells.append(text[start:])
+    return cells
+
+
 def _dedup_fields(fields: list[str]) -> list[str]:
     """Suffix duplicate column names with `_2`, `_3`, etc.
 
@@ -216,7 +255,17 @@ def _parse_tables(opener: str, stream: Iterator[str]) -> Iterator[Table]:
                 break
             elif line.startswith("%R\t"):
                 raws.append(line.rstrip("\r\n"))
-                rows.append(_split_tab(line)[1:])
+                cells = _split_tab(line)[1:]
+                # A tab inside a quoted value splits the row one cell too
+                # many. Re-split those rows only: quote-aware parsing of
+                # every row would misread a stray `"` in plain text. If the
+                # quote-aware split still overflows, keep the raw split so
+                # _normalize_rows reports it.
+                if _data_width(cells) > len(fields) and '"' in line:
+                    quoted = _split_tab_quoted(line)[1:]
+                    if _data_width(quoted) <= len(fields):
+                        cells = quoted
+                rows.append(cells)
             else:
                 raise ValueError(
                     f"unexpected line in {name} rows: {line!r}"

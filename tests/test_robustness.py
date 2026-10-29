@@ -503,3 +503,71 @@ def test_calendar_depth_limit_propagates_through_materialize(tmp_path):
     )
     with pytest.raises(ValueError, match="nesting exceeds depth limit"):
         materialize_calendar_derived(con)
+
+
+# ---- Fix: tab inside a quoted value ----------------------------------
+
+
+def test_tab_inside_quoted_value_stays_in_one_cell(tmp_path):
+    """P6 quotes a text value that holds a tab and doubles quotes inside
+    it. Seen in a real TASKPROC export (59 of 13,803 rows); a plain tab
+    split gave one cell too many and failed the whole load."""
+    body = (
+        "ERMHDR\t22.12\t2026-05-04\n"
+        "%T\tTASKPROC\n"
+        "%F\tproc_id\tproc_descr\tcomplete_flag\n"
+        '%R\t1\t"L2 Sec 6B 18"" Cable Tray (490 )\tY"\tN\n'
+        "%R\t2\tplain\tY\n"
+        "%E\n"
+    )
+    xer = _write_xer(tmp_path / "f.xer", body)
+    (table,) = list(parse_tables(xer))
+    assert table.rows[0] == ["1", '"L2 Sec 6B 18"" Cable Tray (490 )\tY"', "N"]
+    assert table.rows[1] == ["2", "plain", "Y"]
+    con = duckdb.connect(":memory:")
+    assert load_xer(con, [table])["TASKPROC"] == 2
+
+
+def test_stray_quote_in_plain_text_is_not_a_quoted_field(tmp_path):
+    """Rows that already fit keep the plain tab split, so an unpaired
+    quote in ordinary text does not swallow the following cells."""
+    body = (
+        "ERMHDR\t22.12\t2026-05-04\n"
+        "%T\tTASKPROC\n"
+        "%F\tproc_id\tproc_descr\tcomplete_flag\n"
+        '%R\t1\t"6 pipe\tY\n'
+        '%R\t2\t6" pipe\tN\n'
+        "%E\n"
+    )
+    xer = _write_xer(tmp_path / "f.xer", body)
+    (table,) = list(parse_tables(xer))
+    assert table.rows == [["1", '"6 pipe', "Y"], ["2", '6" pipe', "N"]]
+
+
+def test_overflow_that_quotes_do_not_explain_still_raises(tmp_path):
+    """A quoted value does not hide a real extra cell."""
+    body = (
+        "ERMHDR\t22.12\t2026-05-04\n"
+        "%T\tACCOUNT\n"
+        "%F\tacct_id\tacct_name\n"
+        '%R\t1\t"Foo\tBar"\textra-data\n'
+        "%E\n"
+    )
+    xer = _write_xer(tmp_path / "f.xer", body)
+    con = duckdb.connect(":memory:")
+    with pytest.raises(RowArityMismatch, match="extra-data"):
+        load_xer(con, list(parse_tables(xer)))
+
+
+def test_quoted_tab_with_trailing_empty_cell(tmp_path):
+    """The quote-aware split also tolerates the exporter's trailing tab."""
+    body = (
+        "ERMHDR\t22.12\t2026-05-04\n"
+        "%T\tACCOUNT\n"
+        "%F\tacct_id\tacct_name\n"
+        '%R\t1\t"Foo\tBar"\t\n'
+        "%E\n"
+    )
+    xer = _write_xer(tmp_path / "f.xer", body)
+    con = duckdb.connect(":memory:")
+    assert load_xer(con, list(parse_tables(xer)))["ACCOUNT"] == 1
