@@ -33,6 +33,9 @@ jobs:
       - name: Lint
         run: uv run --python ${{ matrix.python-version }} ruff check .
 
+      - name: Type check
+        run: uv run --python ${{ matrix.python-version }} mypy
+
       - name: Run tests
         run: uv run --python ${{ matrix.python-version }} pytest
 

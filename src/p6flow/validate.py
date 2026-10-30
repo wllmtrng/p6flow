@@ -106,7 +106,9 @@ def _check_orphans(
         f'LEFT JOIN "{fk.target_table}" p ON {join_pred} '
         f'WHERE {where}'
     )
-    n = con.execute(f"SELECT COUNT(*) {base_from}").fetchone()[0]
+    row = con.execute(f"SELECT COUNT(*) {base_from}").fetchone()
+    assert row is not None  # an ungrouped aggregate always returns one row
+    n = row[0]
     if n == 0:
         return None
 
@@ -138,9 +140,11 @@ def _check_missing_required(
     null_pred = " OR ".join(f'"{f}" IS NULL' for f in required_fields)
     where = f"({null_pred})"
 
-    n = con.execute(
+    row = con.execute(
         f'SELECT COUNT(*) FROM "{child_table}" WHERE {where}'
-    ).fetchone()[0]
+    ).fetchone()
+    assert row is not None  # an ungrouped aggregate always returns one row
+    n = row[0]
     if n == 0:
         return None
 

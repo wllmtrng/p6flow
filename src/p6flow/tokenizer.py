@@ -85,7 +85,7 @@ def _open_text(path: Path) -> io.StringIO:
         except UnicodeDecodeError:
             continue
     # Should be unreachable since latin-1 accepts every byte.
-    raise UnicodeDecodeError(  # type: ignore[call-arg]
+    raise UnicodeDecodeError(
         "xer", raw, 0, 1, f"could not decode {path} with any of {ENCODINGS}"
     )
 

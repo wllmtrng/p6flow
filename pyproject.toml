@@ -50,6 +50,7 @@ Issues = "https://github.com/wllmtrng/p6flow/issues"
 
 [project.optional-dependencies]
 dev = [
+    "mypy>=1.10",
     "pytest>=8",
     "ruff>=0.5",
 ]
@@ -77,6 +78,12 @@ include = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.mypy]
+files = ["src/p6flow"]
+python_version = "3.11"
+disallow_untyped_defs = true
+warn_unused_ignores = true
 
 [tool.ruff]
 line-length = 100
