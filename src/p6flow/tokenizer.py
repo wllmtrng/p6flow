@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import io
 import re
-from collections.abc import Iterator
-from dataclasses import dataclass
+from collections.abc import Generator, Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 
 ENCODINGS = ("utf-8-sig", "cp1252", "latin-1")
@@ -46,11 +46,7 @@ class Table:
     # Byte-faithful raw `%R\t...` line per row, captured before
     # _split_tab. Parallel to `rows` (raws[i] produced rows[i]).
     # Newline-stripped. Empty list when the table has no rows.
-    raws: list[str] = None  # type: ignore[assignment]
-
-    def __post_init__(self):
-        if self.raws is None:
-            self.raws = []
+    raws: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -204,7 +200,7 @@ def parse_tables(path: Path) -> Iterator[Table]:
         raise ValueError(f"{path}: file ended without %E marker")
 
 
-def _parse_tables(opener: str, stream: Iterator[str]) -> Iterator[Table]:
+def _parse_tables(opener: str, stream: Iterator[str]) -> Generator[Table, None, str]:
     """Yield tables, returning the line that terminated the sequence.
 
     The return value (visible to callers via `yield from`) is the final
