@@ -167,8 +167,14 @@ def _parse_time(hhmm: str) -> time:
     """`08:00` -> time(8, 0). P6 also emits `24:00` for midnight-rollover
     (a full-day segment finishing at end of day); normalize that to
     23:59:59.999 since `time` doesn't accept hour=24."""
+    # Some exports write 12-hour times (`8:00 AM`, whitespace already stripped).
+    suffix = hhmm[-2:].upper()
+    if suffix in ("AM", "PM"):
+        hhmm = hhmm[:-2]
     hh, mm = hhmm.split(":")
     h, m = int(hh), int(mm)
+    if suffix in ("AM", "PM"):
+        h = h % 12 + (12 if suffix == "PM" else 0)
     if h == 24 and m == 0:
         return time(23, 59, 59, 999000)
     return time(h, m)

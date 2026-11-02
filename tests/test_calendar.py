@@ -82,6 +82,30 @@ def test_split_shift_segments():
     assert payload.weekly[1].hours == 4.0
 
 
+
+def test_12_hour_times():
+    """Some P6 exports write `8:00 AM` / `1:00 pm`; case-insensitive."""
+    blob = (
+        "(0||CalendarData()("
+        "(0||DaysOfWeek()("
+        "(0||2()("
+        "(0||0(s|8:00 AM|f|12:00 PM)())"
+        "(0||1(s|1:00 pm|f|5:30 pm)())"
+        "))"
+        "(0||3()("
+        "(0||0(s|12:00 am|f|8:00 Am)())"
+        "))"
+        "))"
+        "))"
+    )
+    payload = parse_clndr_data(blob)
+    assert [(w.start_time, w.end_time) for w in payload.weekly] == [
+        (time(8, 0), time(12, 0)),
+        (time(13, 0), time(17, 30)),
+        (time(0, 0), time(8, 0)),
+    ]
+    assert [w.hours for w in payload.weekly] == [4.0, 4.5, 8.0]
+
 def test_p6_epoch_origin():
     """Locked at 1899-12-30 (Excel epoch). Day 38537 must be 2005-07-04
     (validated against multiple US 5-day calendars in the fixture)."""
