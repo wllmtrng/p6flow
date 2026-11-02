@@ -10,14 +10,26 @@ on:
     tags:
       - 'v*'
 
+# Deny every GITHUB_TOKEN permission by default. Each job below grants
+# only what it needs, so a job added later starts with no access.
+permissions: {}
+
 jobs:
   # Same lint, type-check, and test matrix that gates pull requests.
+  # A called workflow can never exceed what its caller grants, so this
+  # job must grant the contents: read that ci.yml asks for.
   test:
     uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
 
   build:
     needs: test
     runs-on: ubuntu-latest
+    # Checkout needs to read the repo. Artifact upload and download use
+    # the Actions runtime token, not GITHUB_TOKEN, so they need nothing.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
 
