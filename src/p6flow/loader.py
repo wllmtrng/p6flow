@@ -18,7 +18,7 @@ from __future__ import annotations
 import duckdb
 import pyarrow as pa
 
-from .ddl import duckdb_ddl, topo_sort_tables
+from .ddl import OverrideMap, duckdb_ddl, topo_sort_tables
 from .inference import resolve_overrides
 from .schema import COLUMN_TYPES
 from .tokenizer import Table  # parse_tables imported lazily by callers
@@ -73,7 +73,7 @@ def _materialize(
     return out
 
 
-def _cast_select(table: str, fields: list[str], overrides) -> str:
+def _cast_select(table: str, fields: list[str], overrides: OverrideMap | None) -> str:
     """Build a SELECT list that casts each string column to its target type.
 
     Uses NULLIF(col, '') to convert XER's empty-string convention to SQL NULL.

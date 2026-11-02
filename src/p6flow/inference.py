@@ -149,12 +149,10 @@ def infer_unknown(table: str, field: str, values: Iterable[str]) -> ColumnSpec:
     """
     h = heuristic_bucket(field)
     s = sniff_bucket(values)
-    if h is None and s is None:
-        bucket = "string"
+    if s is None:
+        bucket = h or "string"
     elif h is None:
         bucket = s
-    elif s is None:
-        bucket = h
     elif s in _ABSORBS.get(h, frozenset()):
         bucket = h
     else:

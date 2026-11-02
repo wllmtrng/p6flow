@@ -98,6 +98,7 @@ def _inspect_udf_storage(
         "FROM UDFVALUE WHERE udf_type_id = ?",
         [udf_type_id],
     ).fetchone()
+    assert row is not None  # an ungrouped aggregate always returns one row
     text, number, dt, code = row
     if code > max(text, number, dt):
         # JOIN to UDFCODE happens in the pivot SQL.
@@ -286,8 +287,9 @@ def materialize_udf_wide(
         wide_table = f"{entity}_UDF"
         sql = _build_pivot_sql(entity, pk_col, cols, has_udfcode)
         con.execute(sql)
-        n = con.execute(f'SELECT COUNT(*) FROM "{wide_table}"').fetchone()[0]
-        counts[wide_table] = n
+        row = con.execute(f'SELECT COUNT(*) FROM "{wide_table}"').fetchone()
+        assert row is not None  # an ungrouped aggregate always returns one row
+        counts[wide_table] = row[0]
         for udf_id, label, dtype, col_name, _src, _cast in cols:
             map_rows.append({
                 "entity_table": entity,

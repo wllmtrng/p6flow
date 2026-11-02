@@ -1,4 +1,4 @@
-.PHONY: install sync test lint codegen clean
+.PHONY: install sync test lint typecheck codegen clean
 
 # iCloud re-hides files prefixed with underscore in site-packages; Python's
 # site.py then skips the editable-install .pth file. Bypass entirely by
@@ -15,6 +15,9 @@ test:
 
 lint:
 	.venv/bin/ruff check .
+
+typecheck:
+	.venv/bin/mypy
 
 codegen:
 	$(PY) scripts/codegen.py --version 26.4
